@@ -1,6 +1,8 @@
 require 'test_helper'
 
 class BeanstreamTest < Test::Unit::TestCase
+  include CommStub
+
   def setup
     Base.mode = :test
 
@@ -11,6 +13,16 @@ class BeanstreamTest < Test::Unit::TestCase
                )
 
     @credit_card = credit_card
+
+    @decrypted_credit_card = ActiveMerchant::Billing::NetworkTokenizationCreditCard.new(
+      month: "01",
+      year: "2012",
+      brand: "visa",
+      number: "4030000010001234",
+      payment_cryptogram: "cryptogram goes here",
+      eci: "an ECI value",
+      transaction_id: "transaction ID",
+    )
 
     @check       = check(
                      :institution_number => '001',
@@ -192,6 +204,24 @@ class BeanstreamTest < Test::Unit::TestCase
     @gateway.purchase(@amount, @credit_card, @options)
   end
 
+  def test_includes_network_tokenization_fields
+    response = stub_comms(@gateway, :ssl_request) do
+      @gateway.purchase(@amount, @decrypted_credit_card, @options)
+    end.check_request do |method, endpoint, data, headers|
+      assert_match(/3DSecureXID/, data)
+      assert_match(/3DSecureECI/, data)
+      assert_match(/3DSecureCAVV/, data)
+    end.respond_with(successful_purchase_response)
+
+    assert_success response
+  end
+
+
+  def test_transcript_scrubbing
+    assert_equal scrubbed_transcript, @gateway.scrub(transcript)
+  end
+
+
   private
 
   def successful_purchase_response
@@ -234,5 +264,12 @@ class BeanstreamTest < Test::Unit::TestCase
     "<response><code>1</code><message>Request successful</message></response>"
   end
 
-end
+  def transcript
+    "ref1=reference+one&trnCardOwner=Longbob+Longsen&trnCardNumber=4030000010001234&trnExpMonth=09&trnExpYear=16&trnCardCvd=123&ordName=xiaobo+zzz&ordEmailAddress=xiaobozzz%40example.com&username=awesomesauce&password=sp00nz%21%21"
+  end
 
+  def scrubbed_transcript
+    "ref1=reference+one&trnCardOwner=Longbob+Longsen&trnCardNumber=[FILTERED]&trnExpMonth=09&trnExpYear=16&trnCardCvd=[FILTERED]&ordName=xiaobo+zzz&ordEmailAddress=xiaobozzz%40example.com&username=awesomesauce&password=[FILTERED]"
+  end
+
+end
