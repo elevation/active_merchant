@@ -24,8 +24,8 @@ class BanwireTest < Test::Unit::TestCase
     @amex_credit_card = credit_card('375932134599999',
                                     :month => 3,
                                     :year => 2017,
-                                    :first_name => "Banwire",
-                                    :last_name => "Test Card")
+                                    :first_name => 'Banwire',
+                                    :last_name => 'Test Card')
     @amex_options = {
         :order_id => '2',
         :email => 'test@email.com',
@@ -85,6 +85,11 @@ class BanwireTest < Test::Unit::TestCase
     assert response.test?
   end
 
+  def test_transcript_scrubbing
+    assert_equal scrubbed_transcript, @gateway.scrub(transcript)
+  end
+
+
   private
 
   def failed_purchase_response
@@ -115,5 +120,13 @@ class BanwireTest < Test::Unit::TestCase
     <<-RESPONSE
     {"user":"desarrollo"
     RESPONSE
+  end
+
+  def transcript
+    %(user=desarrollo&phone=%28555%29555-5555&mail=unspecified%40email.com&reference=d833147668945a09fc72168bfa53c53c&concept=&card_num=5204164299999999&card_name=Longbob+Longsen&card_type=mastercard&card_exp=09%2F16&card_ccv2=999)
+  end
+
+  def scrubbed_transcript
+    %(user=desarrollo&phone=%28555%29555-5555&mail=unspecified%40email.com&reference=d833147668945a09fc72168bfa53c53c&concept=&card_num=[FILTERED]&card_name=Longbob+Longsen&card_type=mastercard&card_exp=09%2F16&card_ccv2=[FILTERED])
   end
 end

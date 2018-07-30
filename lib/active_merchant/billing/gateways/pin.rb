@@ -29,6 +29,7 @@ module ActiveMerchant #:nodoc:
         add_creditcard(post, creditcard)
         add_address(post, creditcard, options)
         add_capture(post, options)
+        add_metadata(post, options)
 
         commit(:post, 'charges', post, options)
       end
@@ -44,9 +45,7 @@ module ActiveMerchant #:nodoc:
         commit(:post, 'customers', post, options)
       end
 
-      # Refund a transaction, note that the money attribute is ignored at the
-      # moment as the API does not support partial refunds. The parameter is
-      # kept for compatibility reasons
+      # Refund a transaction
       def refund(money, token, options = {})
         commit(:post, "charges/#{CGI.escape(token)}/refunds", { :amount => amount(money) }, options)
       end
@@ -59,10 +58,10 @@ module ActiveMerchant #:nodoc:
         purchase(money, creditcard, options)
       end
 
-      # Captures a previously authorized charge. Capturing a certin amount of the original
+      # Captures a previously authorized charge. Capturing only part of the original
       # authorization is currently not supported.
       def capture(money, token, options = {})
-        commit(:put, "charges/#{CGI.escape(token)}/capture", {}, options)
+        commit(:put, "charges/#{CGI.escape(token)}/capture", { :amount => amount(money) }, options)
       end
 
       # Updates the credit card for the customer.
@@ -75,6 +74,16 @@ module ActiveMerchant #:nodoc:
         commit(:put, "customers/#{CGI.escape(token)}", post, options)
       end
 
+      def supports_scrubbing
+        true
+      end
+
+      def scrub(transcript)
+        transcript.
+          gsub(%r((Authorization: Basic )\w+), '\1[FILTERED]').
+          gsub(/(number\\?":\\?")(\d*)/, '\1[FILTERED]').
+          gsub(/(cvc\\?":\\?")(\d*)/, '\1[FILTERED]')
+      end
       private
 
       def add_amount(post, money, options)
@@ -104,7 +113,8 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_invoice(post, options)
-        post[:description] = options[:description] || "Active Merchant Purchase"
+        post[:description] = options[:description] || 'Active Merchant Purchase'
+        post[:reference] = options[:reference] if options[:reference]
       end
 
       def add_capture(post, options)
@@ -133,10 +143,14 @@ module ActiveMerchant #:nodoc:
         end
       end
 
+      def add_metadata(post, options)
+        post[:metadata] = options[:metadata] if options[:metadata]
+      end
+
       def headers(params = {})
         result = {
-          "Content-Type" => "application/json",
-          "Authorization" => "Basic #{Base64.strict_encode64(options[:api_key] + ':').strip}"
+          'Content-Type' => 'application/json',
+          'Authorization' => "Basic #{Base64.strict_encode64(options[:api_key] + ':').strip}"
         }
 
         result['X-Partner-Key'] = params[:partner_key] if params[:partner_key]
@@ -154,9 +168,9 @@ module ActiveMerchant #:nodoc:
           body = parse(e.response.body)
         end
 
-        if body["response"]
+        if body['response']
           success_response(body)
-        elsif body["error"]
+        elsif body['error']
           error_response(body)
         end
 
@@ -165,7 +179,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def success_response(body)
-        response = body["response"]
+        response = body['response']
         Response.new(
           true,
           response['status_message'],
@@ -186,7 +200,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def unparsable_response(raw_response)
-        message = "Invalid JSON response received from Pin Payments. Please contact support@pin.net.au if you continue to receive this message."
+        message = 'Invalid JSON response received from Pin Payments. Please contact support@pin.net.au if you continue to receive this message.'
         message += " (The raw response returned by the API was #{raw_response.inspect})"
         return Response.new(false, message)
       end

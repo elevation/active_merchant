@@ -17,7 +17,7 @@ module ActiveMerchant #:nodoc:
       # ==== Options
       #
       # * <tt>:login</tt> -- The Inspire Username.
-      # * <tt>:password</tt> -- The Inspire Passowrd.
+      # * <tt>:password</tt> -- The Inspire Password.
       # See the Inspire Integration Guide for details. (default: +false+)
       def initialize(options = {})
         requires!(options, :login, :password)
@@ -62,12 +62,18 @@ module ActiveMerchant #:nodoc:
         commit('void', nil, post)
       end
 
+      def refund(money, authorization, options = {})
+        post = {}
+        post[:transactionid] = authorization
+        commit('refund', money, post)
+      end
+
       # Update the values (such as CC expiration) stored at
       # InspireGateway.  The CC number must be supplied in the
       # CreditCard object.
       def update(vault_id, creditcard, options = {})
         post = {}
-        post[:customer_vault] = "update_customer"
+        post[:customer_vault] = 'update_customer'
         add_customer_vault_id(post, vault_id)
         add_creditcard(post, creditcard, options)
         add_address(post, creditcard, options)
@@ -78,7 +84,7 @@ module ActiveMerchant #:nodoc:
 
       def delete(vault_id)
         post = {}
-        post[:customer_vault] = "delete_customer"
+        post[:customer_vault] = 'delete_customer'
         add_customer_vault_id(post, vault_id)
         commit(nil, nil, post)
       end
@@ -135,7 +141,7 @@ module ActiveMerchant #:nodoc:
 
       def add_creditcard(post, creditcard,options)
         if options[:store]
-          post[:customer_vault] = "add_customer"
+          post[:customer_vault] = 'add_customer'
           post[:customer_vault_id] = options[:store] unless options[:store] == true
         end
         post[:ccnumber]  = creditcard.number
@@ -157,7 +163,7 @@ module ActiveMerchant #:nodoc:
       def parse(body)
         results = {}
         body.split(/&/).each do |pair|
-          key,val = pair.split(/=/)
+          key,val = pair.split(%r{=})
           results[key] = val
         end
 
@@ -169,23 +175,23 @@ module ActiveMerchant #:nodoc:
 
         response = parse( ssl_post(self.live_url, post_data(action,parameters)) )
 
-        Response.new(response["response"] == "1", message_from(response), response,
-          :authorization => response["transactionid"],
+        Response.new(response['response'] == '1', message_from(response), response,
+          :authorization => response['transactionid'],
           :test => test?,
-          :cvv_result => response["cvvresponse"],
-          :avs_result => { :code => response["avsresponse"] }
+          :cvv_result => response['cvvresponse'],
+          :avs_result => { :code => response['avsresponse'] }
         )
 
       end
 
       def message_from(response)
-        case response["responsetext"]
-        when "SUCCESS","Approved"
-          "This transaction has been approved"
-        when "DECLINE"
-          "This transaction has been declined"
+        case response['responsetext']
+        when 'SUCCESS','Approved'
+          'This transaction has been approved'
+        when 'DECLINE'
+          'This transaction has been declined'
         else
-          response["responsetext"]
+          response['responsetext']
         end
       end
 
@@ -195,7 +201,7 @@ module ActiveMerchant #:nodoc:
         post[:password]   = @options[:password]
         post[:type]       = action if action
 
-        request = post.merge(parameters).map {|key,value| "#{key}=#{CGI.escape(value.to_s)}"}.join("&")
+        request = post.merge(parameters).map {|key,value| "#{key}=#{CGI.escape(value.to_s)}"}.join('&')
         request
       end
 
@@ -204,7 +210,7 @@ module ActiveMerchant #:nodoc:
         when source.is_a?(String) then :vault
         when CreditCard.card_companies.keys.include?(card_brand(source)) then :credit_card
         when card_brand(source) == 'check' then :check
-        else raise ArgumentError, "Unsupported funding source provided"
+        else raise ArgumentError, 'Unsupported funding source provided'
         end
       end
     end

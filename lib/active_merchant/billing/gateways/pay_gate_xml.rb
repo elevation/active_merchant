@@ -52,7 +52,7 @@ module ActiveMerchant #:nodoc:
     #
     # PayGateXML Field        ActiveMerchant Use
     #
-    # pgid                    use :login value to gateway instantation
+    # pgid                    use :login value to gateway instantiation
     # pwd                     use :password value to gateway instantiation
     #
     # cname                   credit_card.name
@@ -102,45 +102,45 @@ module ActiveMerchant #:nodoc:
 
       DECLINE_CODES = {
         # Credit Card Errors - These RESULT_CODEs are returned if the transaction cannot be authorized due to a problem with the card.  The TRANSACTION_STATUS will be 2
-        900001  => "Call for Approval",
-        900002  => "Card Expired",
-        900003  => "Insufficient Funds",
-        900004  => "Invalid Card Number",
-        900005  => "Bank Interface Timeout",  # indicates a communications failure between the banks systems
-        900006  => "Invalid Card",
-        900007  => "Declined",
-        900009  => "Lost Card",
-        900010  => "Invalid Card Length",
-        900011  => "Suspected Fraud",
-        900012  => "Card Reported As Stolen",
-        900013  => "Restricted Card",
-        900014  => "Excessive Card Usage",
-        900015  => "Card Blacklisted",
+        900001  => 'Call for Approval',
+        900002  => 'Card Expired',
+        900003  => 'Insufficient Funds',
+        900004  => 'Invalid Card Number',
+        900005  => 'Bank Interface Timeout',  # indicates a communications failure between the banks systems
+        900006  => 'Invalid Card',
+        900007  => 'Declined',
+        900009  => 'Lost Card',
+        900010  => 'Invalid Card Length',
+        900011  => 'Suspected Fraud',
+        900012  => 'Card Reported As Stolen',
+        900013  => 'Restricted Card',
+        900014  => 'Excessive Card Usage',
+        900015  => 'Card Blacklisted',
 
-        900207  => "Declined; authentication failed",  # indicates the cardholder did not enter their MasterCard SecureCode / Verified by Visa password correctly
+        900207  => 'Declined; authentication failed',  # indicates the cardholder did not enter their MasterCard SecureCode / Verified by Visa password correctly
 
-        990020  => "Auth Declined",
+        990020  => 'Auth Declined',
 
-        991001  => "Invalid expiry date",
-        991002  => "Invalid amount",
+        991001  => 'Invalid expiry date',
+        991002  => 'Invalid amount',
 
         # Communication Errors - These RESULT_CODEs are returned if the transaction cannot be completed due to an unexpected error.  TRANSACTION_STATUS will be 0.
-        900205  => "Unexpected authentication result (phase 1)",
-        900206  => "Unexpected authentication result (phase 1)",
+        900205  => 'Unexpected authentication result (phase 1)',
+        900206  => 'Unexpected authentication result (phase 1)',
 
-        990001  => "Could not insert into Database",
+        990001  => 'Could not insert into Database',
 
-        990022  => "Bank not available",
+        990022  => 'Bank not available',
 
-        990053  => "Error processing transaction",
+        990053  => 'Error processing transaction',
 
         # Miscellaneous - Unless otherwise noted, the TRANSACTION_STATUS will be 0.
-        900209  => "Transaction verification failed (phase 2)",  # Indicates the verification data returned from MasterCard SecureCode / Verified by Visa has been altered
-        900210  => "Authentication complete; transaction must be restarted",  # Indicates that the MasterCard SecuerCode / Verified by Visa transaction has already been completed.  Most likely caused by the customer clicking the refresh button
+        900209  => 'Transaction verification failed (phase 2)',  # Indicates the verification data returned from MasterCard SecureCode / Verified by Visa has been altered
+        900210  => 'Authentication complete; transaction must be restarted',  # Indicates that the MasterCard SecuerCode / Verified by Visa transaction has already been completed.  Most likely caused by the customer clicking the refresh button
 
-        990024  => "Duplicate Transaction Detected.  Please check before submitting",
+        990024  => 'Duplicate Transaction Detected.  Please check before submitting',
 
-        990028  => "Transaction cancelled"  # Customer clicks the 'Cancel' button on the payment page
+        990028  => 'Transaction cancelled'  # Customer clicks the 'Cancel' button on the payment page
       }
 
       SUCCESS_CODES = %w( 990004 990005 990017 990012 990018 990031 )
@@ -178,7 +178,7 @@ module ActiveMerchant #:nodoc:
         action = 'settletx'
 
         options.merge!(:money => money, :authorization => authorization)
-        commit_capture(action, authorization, build_request(action, options))
+        commit(action, build_request(action, options), authorization)
       end
 
       def refund(money, authorization, options={})
@@ -199,21 +199,18 @@ module ActiveMerchant #:nodoc:
         xml.instruct!
 
         xml.tag! 'protocol', :ver => API_VERSION, :pgid => (test? ? TEST_ID : @options[:login]), :pwd => @options[:password] do |protocol|
+          money         = options.delete(:money)
+          authorization = options.delete(:authorization)
+          creditcard    = options.delete(:creditcard)
           case action
-            when 'authtx'
-              money       = options.delete(:money)
-              creditcard  = options.delete(:creditcard)
-              build_authorization(protocol, money, creditcard, options)
-            when 'settletx'
-              money           = options.delete(:money)
-              authorization   = options.delete(:authorization)
-              build_capture(protocol, money, authorization, options)
-            when 'refundtx'
-              money           = options.delete(:money)
-              authorization   = options.delete(:authorization)
-              build_refund(protocol, money, authorization, options)
+          when 'authtx'
+            build_authorization(protocol, money, creditcard, options)
+          when 'settletx'
+            build_capture(protocol, money, authorization, options)
+          when 'refundtx'
+            build_refund(protocol, money, authorization, options)
           else
-            raise "no action specified for build_request"
+            raise 'no action specified for build_request'
           end
         end
 
@@ -229,7 +226,9 @@ module ActiveMerchant #:nodoc:
           :budp  => 0,
           :amt   => amount(money),
           :cur   => (options[:currency] || currency(money)),
-          :cvv   => creditcard.verification_value
+          :cvv   => creditcard.verification_value,
+          :email => options[:email],
+          :ip    => options[:ip]
         }
       end
 
@@ -262,19 +261,11 @@ module ActiveMerchant #:nodoc:
         hash
       end
 
-      def commit(action, request)
+      def commit(action, request, authorization = nil)
         response = parse(action, ssl_post(self.live_url, request))
         Response.new(successful?(response), message_from(response), response,
           :test           => test?,
-          :authorization  => response[:tid]
-        )
-      end
-
-      def commit_capture(action, authorization, request)
-        response = parse(action, ssl_post(self.live_url, request))
-        Response.new(successful?(response), message_from(response), response,
-          :test           => test?,
-          :authorization  => authorization
+          :authorization  => authorization || response[:tid]
         )
       end
 
@@ -284,4 +275,3 @@ module ActiveMerchant #:nodoc:
     end
   end
 end
-

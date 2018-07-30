@@ -5,9 +5,9 @@ module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class CheckoutGateway < Gateway
       self.default_currency = 'USD'
-      self.money_format = :decimals
+      self.money_format = :cents
 
-      self.supported_countries = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 'IE', 'IS', 'IT', 'LI', 'LT', 'LU', 'LV', 'MT', 'MU', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SI', 'SK', 'US']
+      self.supported_countries = ['AD', 'AT', 'BE', 'BG', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FO', 'FI', 'FR', 'GB', 'GI', 'GL', 'GR', 'HR', 'HU', 'IE', 'IS', 'IL', 'IT', 'LI', 'LT', 'LU', 'LV', 'MC', 'MT', 'NL', 'NO', 'PL', 'PT', 'RO', 'SE', 'SI', 'SM', 'SK', 'SJ', 'TR', 'VA']
       self.supported_cardtypes = [:visa, :master, :american_express, :diners_club]
 
       self.homepage_url = 'https://www.checkout.com/'
@@ -26,19 +26,15 @@ module ActiveMerchant #:nodoc:
       }
 
       def initialize(options = {})
-        @url = (options[:gateway_url] || self.live_url)
-
         requires!(options, :merchant_id, :password)
         super
       end
 
       def purchase(amount, payment_method, options)
-        requires!(options, :order_id)
-
         commit('purchase', amount, options) do |xml|
           add_credentials(xml, options)
           add_invoice(xml, amount, options)
-          add_track_id(xml, options[:order_id])
+          add_track_id(xml, options[:order_id] || generate_unique_id)
           add_payment_method(xml, payment_method)
           add_billing_info(xml, options)
           add_shipping_info(xml, options)
@@ -48,12 +44,10 @@ module ActiveMerchant #:nodoc:
       end
 
       def authorize(amount, payment_method, options)
-        requires!(options, :order_id)
-
         commit('authorize', amount, options) do |xml|
           add_credentials(xml, options)
           add_invoice(xml, amount, options)
-          add_track_id(xml, options[:order_id])
+          add_track_id(xml, options[:order_id] || generate_unique_id)
           add_payment_method(xml, payment_method)
           add_billing_info(xml, options)
           add_shipping_info(xml, options)
@@ -153,6 +147,8 @@ module ActiveMerchant #:nodoc:
         xml.bill_email_   options[:email]
         xml.bill_customerip_ options[:ip]
         xml.merchantcustomerid_ options[:customer]
+        xml.descriptor_name options[:descriptor_name]
+        xml.descriptor_city options[:descriptor_city]
       end
 
       def add_reference(xml, authorization)
@@ -166,10 +162,10 @@ module ActiveMerchant #:nodoc:
       end
 
       def commit(action, amount=nil, options={}, &builder)
-        response = parse_xml(ssl_post(@url, build_xml(action, &builder)))
+        response = parse_xml(ssl_post(live_url, build_xml(action, &builder)))
         Response.new(
-          (response[:responsecode] == "0"),
-          (response[:result] || response[:error_text] || "Unknown Response"),
+          (response[:responsecode] == '0'),
+          (response[:result] || response[:error_text] || 'Unknown Response'),
           response,
           authorization: authorization_from(response, action, amount, options),
           test: test?
@@ -188,7 +184,7 @@ module ActiveMerchant #:nodoc:
       def parse_xml(xml)
         response = {}
 
-        Nokogiri::XML(CGI.unescapeHTML(xml)).xpath("//response").children.each do |node|
+        Nokogiri::XML(CGI.unescapeHTML(xml)).xpath('//response').children.each do |node|
           if node.text?
             next
           elsif (node.elements.size == 0)
@@ -206,11 +202,11 @@ module ActiveMerchant #:nodoc:
 
       def authorization_from(response, action,  amount, options)
         currency = options[:currency] || currency(amount)
-        [response[:tranid], response[:trackid], action, amount, currency].join("|")
+        [response[:tranid], response[:trackid], action, amount, currency].join('|')
       end
 
       def split_authorization(authorization)
-        transid, trackid, action, amount, currency = authorization.split("|")
+        transid, trackid, action, amount, currency = authorization.split('|')
         [transid, trackid, action, amount, currency]
       end
     end
