@@ -618,7 +618,9 @@ module ActiveMerchant #:nodoc:
 
         xml.tag! 'recurringSubscriptionInfo' do
           if reference
-            subscription_id = reference.split(';')[6]
+            # subscription_id = reference.split(';')[6]
+            # our subscription/request id has historically been the second item
+            subscription_id = reference.split(';')[1]
             xml.tag! 'subscriptionID',  subscription_id
           end
 
