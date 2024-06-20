@@ -18,27 +18,13 @@ module ActiveMerchant
     RETRY_SAFE = false
     RUBY_184_POST_HEADERS = { 'Content-Type' => 'application/x-www-form-urlencoded' }
 
-    attr_accessor :endpoint
-    attr_accessor :open_timeout
-    attr_accessor :read_timeout
-    attr_accessor :verify_peer
-    attr_accessor :ssl_version
+    attr_accessor :endpoint, :open_timeout, :read_timeout, :verify_peer, :ssl_version, :ca_file, :ca_path, :pem, :pem_password, :logger, :tag, :ignore_http_status, :max_retries, :proxy_address, :proxy_port
+
     if Net::HTTP.instance_methods.include?(:min_version=)
       attr_accessor :min_version
       attr_accessor :max_version
     end
-    attr_reader :ssl_connection
-    attr_accessor :ca_file
-    attr_accessor :ca_path
-    attr_accessor :pem
-    attr_accessor :pem_password
-    attr_reader :wiredump_device
-    attr_accessor :logger
-    attr_accessor :tag
-    attr_accessor :ignore_http_status
-    attr_accessor :max_retries
-    attr_accessor :proxy_address
-    attr_accessor :proxy_port
+    attr_reader :ssl_connection, :wiredump_device
 
     def initialize(endpoint)
       @endpoint     = endpoint.is_a?(URI) ? endpoint : URI.parse(endpoint)
@@ -61,7 +47,8 @@ module ActiveMerchant
     end
 
     def wiredump_device=(device)
-      raise ArgumentError, "can't wiredump to frozen #{device.class}" if device && device.frozen?
+      raise ArgumentError, "can't wiredump to frozen #{device.class}" if device&.frozen?
+
       @wiredump_device = device
     end
 
@@ -71,20 +58,19 @@ module ActiveMerchant
       headers = headers.dup
       headers['connection'] ||= 'close'
 
-      retry_exceptions(:max_retries => max_retries, :logger => logger, :tag => tag) do
-        begin
-          info "connection_http_method=#{method.to_s.upcase} connection_uri=#{endpoint}", tag
+      retry_exceptions(max_retries: max_retries, logger: logger, tag: tag) do
+        info "connection_http_method=#{method.to_s.upcase} connection_uri=#{endpoint}", tag
 
-          result = nil
+        result = nil
 
-          realtime = Benchmark.realtime do
-            http.start unless http.started?
-            @ssl_connection = http.ssl_connection
-            info "connection_ssl_version=#{ssl_connection[:version]} connection_ssl_cipher=#{ssl_connection[:cipher]}", tag
+        realtime = Benchmark.realtime do
+          http.start unless http.started?
+          @ssl_connection = http.ssl_connection
+          info "connection_ssl_version=#{ssl_connection[:version]} connection_ssl_cipher=#{ssl_connection[:cipher]}", tag
 
-            result = case method
+          result =
+            case method
             when :get
-              raise ArgumentError, 'GET requests do not support a request body' if body
               http.get(endpoint.request_uri, headers)
             when :post
               debug body
@@ -110,14 +96,12 @@ module ActiveMerchant
             else
               raise ArgumentError, "Unsupported request method #{method.to_s.upcase}"
             end
-          end
-
-          info '--> %d %s (%d %.4fs)' % [result.code, result.message, result.body ? result.body.length : 0, realtime], tag
-          debug result.body
-          result
         end
-      end
 
+        info '--> %d %s (%d %.4fs)' % [result.code, result.message, result.body ? result.body.length : 0, realtime], tag
+        debug result.body
+        result
+      end
     ensure
       info 'connection_request_total_time=%.4fs' % [Process.clock_gettime(Process::CLOCK_MONOTONIC) - request_start], tag
       http.finish if http.started?
@@ -162,7 +146,6 @@ module ActiveMerchant
       else
         http.verify_mode = OpenSSL::SSL::VERIFY_NONE
       end
-
     end
 
     def configure_cert(http)
@@ -191,7 +174,7 @@ module ActiveMerchant
 
     def log(level, message, tag)
       message = "[#{tag}] #{message}" if tag
-      logger.send(level, message) if logger
+      logger&.send(level, message)
     end
   end
 end
