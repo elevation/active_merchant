@@ -1,6 +1,7 @@
 require 'test_helper'
 
 class RemoteJetpayV2Test < Test::Unit::TestCase
+
   def setup
     @gateway = JetpayV2Gateway.new(fixtures(:jetpay_v2))
 
@@ -10,14 +11,14 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
     @amount_declined = 5205
 
     @options = {
-      device: 'spreedly',
-      application: 'spreedly',
-      developer_id: 'GenkID',
-      billing_address: address(city: 'Durham', state: 'NC', country: 'US', zip: '27701'),
-      shipping_address: address(city: 'Durham', state: 'NC', country: 'US', zip: '27701'),
-      email: 'test@test.com',
-      ip: '127.0.0.1',
-      order_id: '12345'
+      :device => 'spreedly',
+      :application => 'spreedly',
+      :developer_id => 'GenkID',
+      :billing_address => address(:city => 'Durham', :state => 'NC', :country => 'US', :zip => '27701'),
+      :shipping_address => address(:city => 'Durham', :state => 'NC', :country => 'US', :zip => '27701'),
+      :email => 'test@test.com',
+      :ip => '127.0.0.1',
+      :order_id => '12345'
     }
   end
 
@@ -36,7 +37,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_successful_purchase_with_minimal_options
-    assert response = @gateway.purchase(@amount_approved, @credit_card, { device: 'spreedly', application: 'spreedly' })
+    assert response = @gateway.purchase(@amount_approved, @credit_card, {:device => 'spreedly', :application => 'spreedly'})
     assert_success response
     assert_equal 'APPROVED', response.message
     assert_not_nil response.authorization
@@ -48,7 +49,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
       ud_field_1: 'Value1',
       ud_field_2: 'Value2',
       ud_field_3: 'Value3'
-    )
+      )
     assert response = @gateway.purchase(@amount_approved, @credit_card, options)
     assert_success response
   end
@@ -71,7 +72,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
     assert_not_nil auth.authorization
     assert_not_nil auth.params['approval']
 
-    assert capture = @gateway.capture(@amount_approved, auth.authorization, @options.merge(tax_amount: '990', purchase_order: 'ABC12345'))
+    assert capture = @gateway.capture(@amount_approved, auth.authorization, @options.merge(:tax_amount => '990', :purchase_order => 'ABC12345'))
     assert_success capture
   end
 
@@ -98,6 +99,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
     assert_equal 'APPROVED', auth.message
     assert_not_nil auth.authorization
     assert_not_nil auth.params['approval']
+
 
     assert void = @gateway.void(auth.authorization, @options)
     assert_success void
@@ -146,7 +148,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_successful_credit
-    card = credit_card('4242424242424242', verification_value: nil)
+    card = credit_card('4242424242424242', :verification_value => nil)
 
     assert credit = @gateway.credit(@amount_approved, card, @options)
     assert_success credit
@@ -155,7 +157,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_failed_credit
-    card = credit_card('2424242424242424', verification_value: nil)
+    card = credit_card('2424242424242424', :verification_value => nil)
 
     assert credit = @gateway.credit(@amount_approved, card, @options)
     assert_failure credit
@@ -168,7 +170,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_failed_verify
-    card = credit_card('2424242424242424', verification_value: nil)
+    card = credit_card('2424242424242424', :verification_value => nil)
 
     assert verify = @gateway.verify(card, @options)
     assert_failure verify
@@ -176,7 +178,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_invalid_login
-    gateway = JetpayV2Gateway.new(login: 'bogus')
+    gateway = JetpayV2Gateway.new(:login => 'bogus')
     assert response = gateway.purchase(@amount_approved, @credit_card, @options)
     assert_failure response
 
@@ -184,7 +186,7 @@ class RemoteJetpayV2Test < Test::Unit::TestCase
   end
 
   def test_missing_login
-    gateway = JetpayV2Gateway.new(login: '')
+    gateway = JetpayV2Gateway.new(:login => '')
     assert response = gateway.purchase(@amount_approved, @credit_card, @options)
     assert_failure response
 

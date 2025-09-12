@@ -9,51 +9,35 @@ module ActiveMerchant #:nodoc:
       self.test_url = 'https://gatewaytest.borgun.is/ws/Heimir.pub.ws:Authorization'
       self.live_url = 'https://gateway01.borgun.is/ws/Heimir.pub.ws:Authorization'
 
-      self.supported_countries = %w[IS GB HU CZ DE DK SE]
+      self.supported_countries = ['IS', 'GB', 'HU', 'CZ', 'DE', 'DK', 'SE' ]
       self.default_currency = 'ISK'
       self.money_format = :cents
-      self.supported_cardtypes = %i[visa master american_express diners_club discover jcb]
+      self.supported_cardtypes = [:visa, :master, :american_express, :diners_club, :discover, :jcb]
 
       self.homepage_url = 'https://www.borgun.is/'
 
-      def initialize(options = {})
+      def initialize(options={})
         requires!(options, :processor, :merchant_id, :username, :password)
         super
       end
 
-      def purchase(money, payment, options = {})
+      def purchase(money, payment, options={})
         post = {}
-        action = ''
-        if options[:apply_3d_secure] == '1'
-          add_3ds_preauth_fields(post, options)
-          action = '3ds_preauth'
-        else
-          post[:TransType] = '1'
-          add_3ds_fields(post, options)
-          action = 'sale'
-        end
+        post[:TransType] = '1'
         add_invoice(post, money, options)
         add_payment_method(post, payment)
-        commit(action, post, options)
+        commit('sale', post)
       end
 
-      def authorize(money, payment, options = {})
+      def authorize(money, payment, options={})
         post = {}
-        action = ''
-        if options[:apply_3d_secure] == '1'
-          add_3ds_preauth_fields(post, options)
-          action = '3ds_preauth'
-        else
-          post[:TransType] = '5'
-          add_3ds_fields(post, options)
-          action = 'authonly'
-        end
+        post[:TransType] = '5'
         add_invoice(post, money, options)
         add_payment_method(post, payment)
-        commit(action, post, options)
+        commit('authonly', post)
       end
 
-      def capture(money, authorization, options = {})
+      def capture(money, authorization, options={})
         post = {}
         post[:TransType] = '1'
         add_invoice(post, money, options)
@@ -61,7 +45,7 @@ module ActiveMerchant #:nodoc:
         commit('capture', post)
       end
 
-      def refund(money, authorization, options = {})
+      def refund(money, authorization, options={})
         post = {}
         post[:TransType] = '3'
         add_invoice(post, money, options)
@@ -69,7 +53,7 @@ module ActiveMerchant #:nodoc:
         commit('refund', post)
       end
 
-      def void(authorization, options = {})
+      def void(authorization, options={})
         post = {}
         # TransType, TrAmount, and currency must match original values from auth or purchase.
         _, _, _, _, _, transtype, tramount, currency = split_authorization(authorization)
@@ -92,32 +76,14 @@ module ActiveMerchant #:nodoc:
 
       private
 
-      CURRENCY_CODES = Hash.new { |_h, k| raise ArgumentError.new("Unsupported currency for HDFC: #{k}") }
+      CURRENCY_CODES = Hash.new{|h,k| raise ArgumentError.new("Unsupported currency for HDFC: #{k}")}
       CURRENCY_CODES['ISK'] = '352'
       CURRENCY_CODES['EUR'] = '978'
       CURRENCY_CODES['USD'] = '840'
-      CURRENCY_CODES['GBP'] = '826'
-
-      def add_3ds_fields(post, options)
-        post[:ThreeDSMessageId] = options[:three_ds_message_id] if options[:three_ds_message_id]
-        post[:ThreeDS_PARes] = options[:three_ds_pares] if options[:three_ds_pares]
-        post[:ThreeDS_CRes] = options[:three_ds_cres] if options[:three_ds_cres]
-      end
-
-      def add_3ds_preauth_fields(post, options)
-        post[:SaleDescription] = options[:sale_description] || ''
-        post[:MerchantReturnURL] = options[:redirect_url] if options[:redirect_url]
-      end
 
       def add_invoice(post, money, options)
         post[:TrAmount] = amount(money)
         post[:TrCurrency] = CURRENCY_CODES[options[:currency] || currency(money)]
-        # The ISK currency must have a currency exponent of 2 on the 3DS request but not on the auth request
-        if post[:TrCurrency] == '352' && options[:apply_3d_secure] != '1'
-          post[:TrCurrencyExponent] = 0
-        else
-          post[:TrCurrencyExponent] = 2
-        end
         post[:TerminalID] = options[:terminal_id] || '1'
       end
 
@@ -130,23 +96,23 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_reference(post, authorization)
-        dateandtime, _batch, transaction, rrn, authcode, = split_authorization(authorization)
+        dateandtime, _batch, transaction, rrn, authcode, _, _, _ = split_authorization(authorization)
         post[:DateAndTime] = dateandtime
         post[:Transaction] = transaction
         post[:RRN] = rrn
         post[:AuthCode] = authcode
       end
 
-      def parse(xml, options = nil)
+      def parse(xml)
         response = {}
 
         doc = Nokogiri::XML(CGI.unescapeHTML(xml))
-        body = options[:apply_3d_secure] == '1' ? doc.xpath('//get3DSAuthenticationReply') : doc.xpath('//getAuthorizationReply')
+        body = doc.xpath('//getAuthorizationReply')
         body = doc.xpath('//cancelAuthorizationReply') if body.length == 0
         body.children.each do |node|
           if node.text?
             next
-          elsif node.elements.size == 0
+          elsif (node.elements.size == 0)
             response[node.name.downcase.to_sym] = node.text
           else
             node.elements.each do |childnode|
@@ -155,42 +121,44 @@ module ActiveMerchant #:nodoc:
             end
           end
         end
+
         response
       end
 
-      def commit(action, post, options = {})
+      def commit(action, post)
         post[:Version] = '1000'
         post[:Processor] = @options[:processor]
         post[:MerchantID] = @options[:merchant_id]
 
-        request = build_request(action, post, options)
+        url = (test? ? test_url : live_url)
+        request = build_request(action, post)
         raw = ssl_post(url(action), request, headers)
-        pairs = parse(raw, options)
+        pairs = parse(raw)
         success = success_from(pairs)
 
         Response.new(
           success,
           message_from(success, pairs),
           pairs,
-          authorization: authorization_from(pairs, options),
+          authorization: authorization_from(pairs),
           test: test?
         )
       end
 
       def success_from(response)
-        (response[:actioncode] == '000') || (response[:status_resultcode] == '0')
+        (response[:actioncode] == '000')
       end
 
       def message_from(succeeded, response)
         if succeeded
           'Succeeded'
         else
-          response[:message] || response[:status_errormessage] || "Error with ActionCode=#{response[:actioncode]}"
+          response[:message] || "Error with ActionCode=#{response[:actioncode]}"
         end
       end
 
-      def authorization_from(response, options)
-        authorization = [
+      def authorization_from(response)
+        [
           response[:dateandtime],
           response[:batch],
           response[:transaction],
@@ -200,8 +168,6 @@ module ActiveMerchant #:nodoc:
           response[:tramount],
           response[:trcurrency]
         ].join('|')
-
-        authorization == '|||||||' ? nil : authorization
       end
 
       def split_authorization(authorization)
@@ -211,55 +177,36 @@ module ActiveMerchant #:nodoc:
 
       def headers
         {
-          'Authorization' => 'Basic ' + Base64.strict_encode64(@options[:username].to_s + ':' + @options[:password].to_s)
+          'Authorization' => 'Basic ' + Base64.strict_encode64(@options[:username].to_s + ':' + @options[:password].to_s),
         }
       end
 
-      def build_request(action, post, options = {})
-        mode = action == 'void' ? 'cancel' : 'get'
-        transaction_type = action == '3ds_preauth' ? '3DSAuthentication' : 'Authorization'
-        xml = Builder::XmlMarkup.new indent: 18
-        xml.instruct!(:xml, version: '1.0', encoding: 'utf-8')
-        xml.tag!("#{mode}#{transaction_type}") do
+      def build_request(action, post)
+        mode = (action == 'void') ? 'cancel' : 'get'
+        xml = Builder::XmlMarkup.new :indent => 18
+        xml.instruct!(:xml, :version => '1.0', :encoding => 'utf-8')
+        xml.tag!("#{mode}Authorization") do
           post.each do |field, value|
             xml.tag!(field, value)
           end
-          build_airline_xml(xml, options[:passenger_itinerary_data]) if options[:passenger_itinerary_data]
         end
         inner = CGI.escapeHTML(xml.target!)
-        envelope(mode, action).sub(/{{ :body }}/, inner)
+        envelope(mode).sub(/{{ :body }}/,inner)
       end
 
-      def build_airline_xml(xml, airline_data)
-        xml.tag!('PassengerItineraryData') do
-          xml.tag!('A1') do
-            airline_data.each do |field, value|
-              xml.tag!(field, value)
-            end
-          end
-        end
-      end
-
-      def envelope(mode, action)
-        if action == '3ds_preauth'
-          transaction_action = "#{mode}3DSAuthentication"
-          request_action = "#{mode}Auth3DSReqXml"
-        else
-          transaction_action = "#{mode}AuthorizationInput"
-          request_action = "#{mode}AuthReqXml"
-        end
-        <<-XML
+      def envelope(mode)
+        <<-EOS
           <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:aut="http://Borgun/Heimir/pub/ws/Authorization">
             <soapenv:Header/>
             <soapenv:Body>
-              <aut:#{transaction_action}>
-                <#{request_action}>
+              <aut:#{mode}AuthorizationInput>
+                <#{mode}AuthReqXml>
                 {{ :body }}
-                </#{request_action}>
-              </aut:#{transaction_action}>
+                </#{mode}AuthReqXml>
+              </aut:#{mode}AuthorizationInput>
             </soapenv:Body>
           </soapenv:Envelope>
-        XML
+        EOS
       end
 
       def url(action)
@@ -267,7 +214,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def six_random_digits
-        (0...6).map { rand(48..57).chr }.join
+        (0...6).map { (48 + rand(10)).chr }.join
       end
     end
   end

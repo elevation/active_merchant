@@ -1,21 +1,22 @@
 require 'test_helper'
 
 class JetpayV2Test < Test::Unit::TestCase
+
   def setup
-    @gateway = JetpayV2Gateway.new(login: 'login')
+    @gateway = JetpayV2Gateway.new(:login => 'login')
 
     @credit_card = credit_card
     @amount = 100
 
     @options = {
-      device: 'spreedly',
-      application: 'spreedly',
-      developer_id: 'GenkID',
-      billing_address: address(country: 'US'),
-      shipping_address: address(country: 'US'),
-      email: 'test@test.com',
-      ip: '127.0.0.1',
-      order_id: '12345'
+      :device => 'spreedly',
+      :application => 'spreedly',
+      :developer_id => 'GenkID',
+      :billing_address => address(:country => 'US'),
+      :shipping_address => address(:country => 'US'),
+      :email => 'test@test.com',
+      :ip => '127.0.0.1',
+      :order_id => '12345'
     }
   end
 
@@ -88,7 +89,7 @@ class JetpayV2Test < Test::Unit::TestCase
   end
 
   def test_successful_credit
-    card = credit_card('4242424242424242', verification_value: nil)
+    card = credit_card('4242424242424242', :verification_value => nil)
 
     @gateway.expects(:ssl_post).returns(successful_credit_response)
 
@@ -97,7 +98,7 @@ class JetpayV2Test < Test::Unit::TestCase
   end
 
   def test_failed_credit
-    card = credit_card('2424242424242424', verification_value: nil)
+    card = credit_card('2424242424242424', :verification_value => nil)
 
     @gateway.expects(:ssl_post).returns(failed_credit_response)
 
@@ -132,7 +133,7 @@ class JetpayV2Test < Test::Unit::TestCase
   end
 
   def test_failed_verify
-    card = credit_card('2424242424242424', verification_value: nil)
+    card = credit_card('2424242424242424', :verification_value => nil)
 
     @gateway.expects(:ssl_post).returns(failed_credit_response)
 
@@ -162,19 +163,19 @@ class JetpayV2Test < Test::Unit::TestCase
 
   def test_purchase_sends_additional_options
     @gateway.expects(:ssl_post).
-      with(anything, regexp_matches(/<TaxAmount ExemptInd=\"false\">777<\/TaxAmount>/)).
-      with(anything, regexp_matches(/<UDField1>Value1<\/UDField1>/)).
-      with(anything, regexp_matches(/<UDField2>Value2<\/UDField2>/)).
-      with(anything, regexp_matches(/<UDField3>Value3<\/UDField3>/)).
-      returns(successful_purchase_response)
+    with(anything, regexp_matches(/<TaxAmount ExemptInd=\"false\">777<\/TaxAmount>/)).
+    with(anything, regexp_matches(/<UDField1>Value1<\/UDField1>/)).
+    with(anything, regexp_matches(/<UDField2>Value2<\/UDField2>/)).
+    with(anything, regexp_matches(/<UDField3>Value3<\/UDField3>/)).
+    returns(successful_purchase_response)
 
-    @gateway.purchase(@amount, @credit_card, { tax: '777', ud_field_1: 'Value1', ud_field_2: 'Value2', ud_field_3: 'Value3' })
+    @gateway.purchase(@amount, @credit_card, {:tax => '777', :ud_field_1 => 'Value1', :ud_field_2 => 'Value2', :ud_field_3 => 'Value3'})
   end
 
   private
 
   def successful_purchase_response
-    <<-XML
+    <<-EOF
     <JetPayResponse Version="2.2">
       <TransactionID>8afa688fd002821362</TransactionID>
       <ActionCode>000</ActionCode>
@@ -186,21 +187,21 @@ class JetpayV2Test < Test::Unit::TestCase
       <ZipMatch>Y</ZipMatch>
       <AVS>D</AVS>
     </JetPayResponse>
-    XML
+    EOF
   end
 
   def failed_purchase_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>7605f7c5d6e8f74deb</TransactionID>
         <ActionCode>005</ActionCode>
         <ResponseText>DECLINED</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def successful_authorize_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>cbf902091334a0b1aa</TransactionID>
         <ActionCode>000</ActionCode>
@@ -212,75 +213,75 @@ class JetpayV2Test < Test::Unit::TestCase
         <ZipMatch>Y</ZipMatch>
         <AVS>D</AVS>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def successful_capture_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153017T10018</TransactionID>
         <ActionCode>000</ActionCode>
         <Approval>502F6B</Approval>
         <ResponseText>APPROVED</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def failed_capture_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153017T10018</TransactionID>
         <ActionCode>025</ActionCode>
         <Approval>REJECT</Approval>
         <ResponseText>ED</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def successful_void_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153x17T10418</TransactionID>
         <ActionCode>000</ActionCode>
         <Approval>502F7B</Approval>
         <ResponseText>VOID PROCESSED</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def failed_void_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153x17T10418</TransactionID>
         <ActionCode>900</ActionCode>
         <ResponseText>INVALID MESSAGE TYPE</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def successful_credit_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153017T10017</TransactionID>
         <ActionCode>000</ActionCode>
         <Approval>002F6B</Approval>
         <ResponseText>APPROVED</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def failed_credit_response
-    <<-XML
+    <<-EOF
       <JetPayResponse Version="2.2">
         <TransactionID>010327153017T10017</TransactionID>
         <ActionCode>912</ActionCode>
         <ResponseText>INVALID CARD NUMBER</ResponseText>
       </JetPayResponse>
-    XML
+    EOF
   end
 
   def transcript
-    <<-XML
+    <<-EOF
     <TerminalID>TESTMCC3136X</TerminalID>
     <TransactionType>SALE</TransactionType>
     <TransactionID>e23c963a1247fd7aad</TransactionID>
@@ -289,11 +290,11 @@ class JetpayV2Test < Test::Unit::TestCase
     <CardExpYear>16</CardExpYear>
     <CardName>Longbob Longsen</CardName>
     <CVV2>123</CVV2>
-    XML
+    EOF
   end
 
   def scrubbed_transcript
-    <<-XML
+    <<-EOF
     <TerminalID>TESTMCC3136X</TerminalID>
     <TransactionType>SALE</TransactionType>
     <TransactionID>e23c963a1247fd7aad</TransactionID>
@@ -302,6 +303,6 @@ class JetpayV2Test < Test::Unit::TestCase
     <CardExpYear>16</CardExpYear>
     <CardName>Longbob Longsen</CardName>
     <CVV2>[FILTERED]</CVV2>
-    XML
+    EOF
   end
 end

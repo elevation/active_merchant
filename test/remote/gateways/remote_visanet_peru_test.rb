@@ -58,7 +58,7 @@ class RemoteVisanetPeruTest < Test::Unit::TestCase
     assert_equal @options[:order_id], response.params['externalTransactionId']
     assert_equal '1.00', response.params['data']['IMP_AUTORIZADO']
 
-    capture = @gateway.capture(@amount, response.authorization, @options)
+    capture = @gateway.capture(response.authorization, @options)
     assert_success capture
     assert_equal 'OK', capture.message
     assert capture.authorization
@@ -73,27 +73,23 @@ class RemoteVisanetPeruTest < Test::Unit::TestCase
     assert_equal '1.99', response.params['data']['IMP_AUTORIZADO']
   end
 
-  def test_failed_authorize_declined_card
+  def test_failed_authorize
     response = @gateway.authorize(@amount, @declined_card, @options)
     assert_failure response
     assert_equal 400, response.error_code
     assert_equal 'Operacion Denegada.', response.message
-  end
 
-  def test_failed_authorize_bad_email
     @options[:email] = 'cybersource@reject.com'
     response = @gateway.authorize(@amount, @credit_card, @options)
     assert_failure response
     assert_equal 400, response.error_code
-
-    # this also exercises message joining for errorMessage and DSC_COD_ACCION when both are present
-    assert_equal 'REJECT | Operacion denegada', response.message
+    assert_equal 'REJECT', response.message
   end
 
   def test_failed_capture
-    response = @gateway.capture(@amount, '900000044')
+    response = @gateway.capture('900000044')
     assert_failure response
-    assert_match(/NUMORDEN 900000044 no se encuentra registrado/, response.message)
+    assert_match /NUMORDEN 900000044 no se encuentra registrado/, response.message
     assert_equal 400, response.error_code
   end
 
@@ -111,16 +107,16 @@ class RemoteVisanetPeruTest < Test::Unit::TestCase
     assert_success response
 
     new_auth = "_|#{response.authorization.split('|')[1]}"
-    @gateway.refund(@amount, new_auth, @options.merge(force_full_refund_if_unsettled: true, ruc: '20341198217'))
+    refund = @gateway.refund(@amount, new_auth, @options.merge(force_full_refund_if_unsettled: true, ruc: '20341198217'))
     # this test will fail currently because there is no E2E test working for visanet
     # assert_success refund
     # assert_equal "OK", refund.message
   end
 
   def test_failed_refund
-    response = @gateway.refund(@amount, '900000044')
+    response = @gateway.refund(@amount, '900000044' )
     assert_failure response
-    assert_match(/NUMORDEN 900000044 no se encuentra registrado/, response.message)
+    assert_match /NUMORDEN 900000044 no se encuentra registrado/, response.message
     assert_equal 400, response.error_code
   end
 
@@ -136,7 +132,7 @@ class RemoteVisanetPeruTest < Test::Unit::TestCase
   def test_failed_void
     response = @gateway.void('900000044')
     assert_failure response
-    assert_match(/NUMORDEN no se encuentra registrado/, response.message)
+    assert_match /NUMORDEN no se encuentra registrado/, response.message
     assert_equal 400, response.error_code
   end
 

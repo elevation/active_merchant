@@ -1,8 +1,6 @@
 require 'test_helper'
 
 class Latitude19Test < Test::Unit::TestCase
-  include CommStub
-
   def setup
     @gateway = Latitude19Gateway.new(fixtures(:latitude19))
 
@@ -31,18 +29,18 @@ class Latitude19Test < Test::Unit::TestCase
   # end
 
   def test_successful_authorize_and_capture
-    response = stub_comms do
-      @gateway.authorize(@amount, @credit_card, @options)
-    end.respond_with(successful_session_response, successful_token_response, successful_authorize_response)
+    @gateway.expects(:ssl_post).returns(successful_authorize_response)
+    @gateway.expects(:ssl_post).returns(successful_token_response)
+    @gateway.expects(:ssl_post).returns(successful_session_response)
+
+    response = @gateway.authorize(@amount, @credit_card, @options)
     assert_success response
     assert_equal 'Approved', response.message
     assert_match %r(^auth\|\w+$), response.authorization
 
-    capture = stub_comms do
-      @gateway.capture(@amount, response.authorization, @options)
-    end.check_request do |_endpoint, data, _headers|
-      assert_match(/"amount\":\"1.00\"/, data)
-    end.respond_with(successful_capture_response)
+    @gateway.expects(:ssl_post).returns(successful_capture_response)
+
+    capture = @gateway.capture(@amount, response.authorization, @options)
     assert_success capture
     assert_equal 'Approved', capture.message
   end

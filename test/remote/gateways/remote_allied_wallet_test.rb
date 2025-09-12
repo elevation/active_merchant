@@ -9,7 +9,7 @@ class RemoteAlliedWalletTest < Test::Unit::TestCase
     @declined_card = credit_card('4242424242424242', verification_value: '555')
 
     @options = {
-      billing_address: address
+      billing_address: address,
     }
   end
 
@@ -32,12 +32,11 @@ class RemoteAlliedWalletTest < Test::Unit::TestCase
   end
 
   def test_successful_purchase_with_more_options
-    options = @options.merge(
+    response = @gateway.purchase(@amount, @credit_card, @options.merge(
       order_id: generate_unique_id,
       ip: '127.0.0.1',
       email: 'jim_smith@example.com'
-    )
-    response = @gateway.purchase(@amount, @credit_card, options)
+    ))
     assert_success response
     assert_equal 'Succeeded', response.message
   end

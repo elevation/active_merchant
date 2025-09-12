@@ -166,4 +166,5 @@ class EzicTest < Test::Unit::TestCase
   def successful_authorize_raw_response
     MockResponse.succeeded(successful_authorize_response)
   end
+
 end

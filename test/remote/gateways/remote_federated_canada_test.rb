@@ -1,6 +1,7 @@
 require 'test_helper'
 
 class RemoteFederatedCanadaTest < Test::Unit::TestCase
+
   def setup
     @gateway = FederatedCanadaGateway.new(fixtures(:federated_canada))
 
@@ -10,9 +11,9 @@ class RemoteFederatedCanadaTest < Test::Unit::TestCase
     @credit_card = credit_card('4111111111111111') # Visa
 
     @options = {
-      order_id: generate_unique_id,
-      billing_address: address,
-      description: 'Active Merchant Remote Test Purchase'
+      :order_id => generate_unique_id,
+      :billing_address => address,
+      :description => 'Active Merchant Remote Test Purchase'
     }
   end
 
@@ -76,9 +77,9 @@ class RemoteFederatedCanadaTest < Test::Unit::TestCase
 
   def test_invalid_login
     gateway = FederatedCanadaGateway.new(
-      login: '',
-      password: ''
-    )
+                :login => '',
+                :password => ''
+              )
     assert response = gateway.purchase(@amount, @credit_card, @options)
     assert_failure response
     assert_equal 'Error in transaction data or system error', response.message

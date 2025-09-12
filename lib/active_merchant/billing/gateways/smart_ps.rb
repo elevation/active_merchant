@@ -3,6 +3,7 @@ require File.join(File.dirname(__FILE__), '..', 'check.rb')
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class SmartPs < Gateway #:nodoc:
+
       ##
       # This is the base gateway for processors who use the smartPS processing system
 
@@ -22,7 +23,7 @@ module ActiveMerchant #:nodoc:
       def authorize(money, creditcard, options = {})
         post = {}
         add_invoice(post, options)
-        add_payment_source(post, creditcard, options)
+        add_payment_source(post, creditcard,options)
         add_address(post, options[:billing_address] || options[:address])
         add_address(post, options[:shipping_address], 'shipping')
         add_customer_data(post, options)
@@ -47,13 +48,13 @@ module ActiveMerchant #:nodoc:
       end
 
       def capture(money, authorization, options = {})
-        post = {}
+        post ={}
         post[:transactionid] = authorization
         commit('capture', money, post)
       end
 
       def void(authorization, options = {})
-        post = {}
+        post ={}
         post[:transactionid] = authorization
         commit('void', nil, post)
       end
@@ -64,7 +65,7 @@ module ActiveMerchant #:nodoc:
         add_payment_source(post, payment_source, options)
         add_address(post, options[:billing_address] || options[:address])
         add_customer_data(post, options)
-        add_sku(post, options)
+        add_sku(post,options)
         add_currency(post, money, options)
         add_processor(post, options)
         commit('credit', money, post)
@@ -105,6 +106,7 @@ module ActiveMerchant #:nodoc:
         commit('update', nil, post)
       end
 
+
       def delete(vault_id)
         post = {}
         post[:customer_vault] = 'delete_customer'
@@ -117,33 +119,36 @@ module ActiveMerchant #:nodoc:
       def store(payment_source, options = {})
         post = {}
         billing_id = options.delete(:billing_id).to_s || true
-        add_payment_source(post, payment_source, store: billing_id)
+        add_payment_source(post, payment_source, :store => billing_id)
         add_address(post, options[:billing_address] || options[:address])
         add_customer_data(post, options)
         commit(nil, nil, post)
       end
 
-      alias unstore delete
+      alias_method :unstore, :delete
 
       private
-
       def add_customer_data(post, options)
-        post[:email] = options[:email] if options.has_key? :email
+        if options.has_key? :email
+          post[:email] = options[:email]
+        end
 
-        post[:ipaddress] = options[:ip] if options.has_key? :ip
+        if options.has_key? :ip
+          post[:ipaddress] = options[:ip]
+        end
       end
 
-      def add_address(post, address, prefix = '')
-        prefix += '_' unless prefix.blank?
-        unless address.blank? || address.values.blank?
-          post[prefix + 'address1']    = address[:address1].to_s
-          post[prefix + 'address2']    = address[:address2].to_s unless address[:address2].blank?
-          post[prefix + 'company']    = address[:company].to_s
-          post[prefix + 'phone']      = address[:phone].to_s
-          post[prefix + 'zip']        = address[:zip].to_s
-          post[prefix + 'city']       = address[:city].to_s
-          post[prefix + 'country']    = address[:country].to_s
-          post[prefix + 'state']      = address[:state].blank? ? 'n/a' : address[:state]
+      def add_address(post, address,prefix='')
+        prefix +='_' unless prefix.blank?
+        unless address.blank? or address.values.blank?
+          post[prefix+'address1']    = address[:address1].to_s
+          post[prefix+'address2']    = address[:address2].to_s unless address[:address2].blank?
+          post[prefix+'company']    = address[:company].to_s
+          post[prefix+'phone']      = address[:phone].to_s
+          post[prefix+'zip']        = address[:zip].to_s
+          post[prefix+'city']       = address[:city].to_s
+          post[prefix+'country']    = address[:country].to_s
+          post[prefix+'state']      = address[:state].blank?  ? 'n/a' : address[:state]
         end
       end
 
@@ -163,7 +168,7 @@ module ActiveMerchant #:nodoc:
         post[:orderid] = options[:order_id].to_s.gsub(/[^\w.]/, '')
       end
 
-      def add_payment_source(params, source, options = {})
+      def add_payment_source(params, source, options={})
         case determine_funding_source(source)
         when :vault       then add_customer_vault_id(params, source)
         when :credit_card then add_creditcard(params, source, options)
@@ -180,9 +185,9 @@ module ActiveMerchant #:nodoc:
           post[:customer_vault] = 'add_customer'
           post[:customer_vault_id] = options[:store] unless options[:store] == true
         end
-        post[:ccnumber] = creditcard.number
+        post[:ccnumber]  = creditcard.number
         post[:cvv] = creditcard.verification_value if creditcard.verification_value?
-        post[:ccexp] = expdate(creditcard)
+        post[:ccexp]  = expdate(creditcard)
         post[:firstname] = creditcard.first_name
         post[:lastname]  = creditcard.last_name
       end
@@ -201,7 +206,7 @@ module ActiveMerchant #:nodoc:
         post[:account_type] = check.account_type # The customer's type of ACH account
       end
 
-      def add_sku(post, options)
+      def add_sku(post,options)
         post['product_sku_#'] = options[:sku] || options['product_sku_#']
       end
 
@@ -216,7 +221,7 @@ module ActiveMerchant #:nodoc:
       def parse(body)
         results = {}
         body.split(/&/).each do |pair|
-          key, val = pair.split(/=/)
+          key,val = pair.split(/=/)
           results[key] = val
         end
 
@@ -224,17 +229,15 @@ module ActiveMerchant #:nodoc:
       end
 
       def commit(action, money, parameters)
-        parameters[:amount] = localized_amount(money, parameters[:currency] || default_currency) if money
-        response = parse(ssl_post(self.live_url, post_data(action, parameters)))
-        Response.new(
-          response['response'] == '1',
-          message_from(response),
-          response,
-          authorization: (response['transactionid'] || response['customer_vault_id']),
-          test: test?,
-          cvv_result: response['cvvresponse'],
-          avs_result: { code: response['avsresponse'] }
+        parameters[:amount]  = localized_amount(money, parameters[:currency] || default_currency) if money
+        response = parse( ssl_post(self.live_url, post_data(action,parameters)) )
+        Response.new(response['response'] == '1', message_from(response), response,
+          :authorization => (response['transactionid'] || response['customer_vault_id']),
+          :test => test?,
+          :cvv_result => response['cvvresponse'],
+          :avs_result => { :code => response['avsresponse'] }
         )
+
       end
 
       def expdate(creditcard)
@@ -243,6 +246,7 @@ module ActiveMerchant #:nodoc:
 
         "#{month}#{year[-2..-1]}"
       end
+
 
       def message_from(response)
         case response['responsetext']
@@ -257,17 +261,18 @@ module ActiveMerchant #:nodoc:
 
       def post_data(action, parameters = {})
         post = {}
-        post[:username] = @options[:login]
+        post[:username]      = @options[:login]
         post[:password]   = @options[:password]
         post[:type]       = action if action
 
-        post.merge(parameters).map { |key, value| "#{key}=#{CGI.escape(value.to_s)}" }.join('&')
+        request = post.merge(parameters).map {|key,value| "#{key}=#{CGI.escape(value.to_s)}"}.join('&')
+        request
       end
 
       def determine_funding_source(source)
         case
         when source.is_a?(String) then :vault
-        when CreditCard.card_companies.include?(card_brand(source)) then :credit_card
+        when CreditCard.card_companies.keys.include?(card_brand(source)) then :credit_card
         when card_brand(source) == 'check' then :check
         else raise ArgumentError, 'Unsupported funding source provided'
         end
@@ -275,3 +280,4 @@ module ActiveMerchant #:nodoc:
     end
   end
 end
+

@@ -59,6 +59,7 @@ class CommercegateTest < Test::Unit::TestCase
     assert_equal 'EUR', response.params['currencyCode']
   end
 
+
   def test_successful_void
     @gateway.expects(:ssl_post).returns(successful_void_response)
     assert response = @gateway.void('100130291412', @options)
