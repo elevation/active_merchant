@@ -1,3 +1,5 @@
+require 'nokogiri'
+
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     # Initial setup instructions can be found in
@@ -25,6 +27,18 @@ module ActiveMerchant #:nodoc:
       self.live_url = 'https://ics2wsa.ic3.com/commerce/1.x/transactionProcessor'
 
       XSD_VERSION = '1.121'
+
+      NS_DS = 'http://www.w3.org/2000/09/xmldsig#'
+      NS_WSSE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'
+      C14N_ALGORITHM = 'http://www.w3.org/2001/10/xml-exc-c14n#'
+      RSA_SHA256_ALGORITHM = 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256'
+      SHA256_ALGORITHM = 'http://www.w3.org/2001/04/xmlenc#sha256'
+      BINARY_SECURITY_TOKEN_PROFILE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-x509-token-profile-1.0#X509v3'
+      BINARY_SECURITY_TOKEN_TYPE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary'
+      BINARY_SECURITY_TOKEN_WSU = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd'
+      BINARY_SECURITY_TOKEN_ID = 'X509Token'
+      USERNAME_TOKEN_PROFILE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText'
+      ENVELOPE = 'http://schemas.xmlsoap.org/soap/envelope/'
 
       self.supported_cardtypes = [:visa, :master, :american_express, :discover, :diners_club, :jcb, :switch, :dankort, :maestro]
       self.supported_countries = %w(US BR CA CN DK FI FR DE JP MX NO SE GB SG LB)
@@ -108,7 +122,12 @@ module ActiveMerchant #:nodoc:
       # :ignore_cvv => true   don't want to use CVV so continue processing even
       #                       if CVV would have failed
       def initialize(options = {})
-        requires!(options, :login, :password)
+        if options[:public_key]
+          requires!(options, :login, :public_key, :private_key)
+        else
+          requires!(options, :login, :password)
+        end
+
         super
       end
 
@@ -220,6 +239,9 @@ module ActiveMerchant #:nodoc:
       def scrub(transcript)
         transcript.
           gsub(%r((<wsse:Password [^>]*>)[^<]*(</wsse:Password>))i, '\1[FILTERED]\2').
+          gsub(%r((<wsse:BinarySecurityToken [^>]*>)[^<]*(</wsse:BinarySecurityToken>))i, '\1[FILTERED]\2').
+          gsub(%r((<ds:DigestValue>)[^<]*(</ds:DigestValue>))i, '\1[FILTERED]\2').
+          gsub(%r((<ds:SignatureValue [^>]*>)[^<]*(</ds:SignatureValue>))i, '\1[FILTERED]\2').
           gsub(%r((<accountNumber>)[^<]*(</accountNumber>))i, '\1[FILTERED]\2').
           gsub(%r((<cvNumber>)[^<]*(</cvNumber>))i, '\1[FILTERED]\2').
           gsub(%r((<cavv>)[^<]*(</cavv>))i, '\1[FILTERED]\2').
@@ -683,26 +705,103 @@ module ActiveMerchant #:nodoc:
         country_code.code(:alpha2) if country_code
       end
 
-      # Where we actually build the full SOAP request using builder
-      def build_request(body, options)
-        xml = Builder::XmlMarkup.new :indent => 2
-          xml.instruct!
-          xml.tag! 's:Envelope', {'xmlns:s' => 'http://schemas.xmlsoap.org/soap/envelope/'} do
-            xml.tag! 's:Header' do
-              xml.tag! 'wsse:Security', {'s:mustUnderstand' => '1', 'xmlns:wsse' => 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd'} do
-                xml.tag! 'wsse:UsernameToken' do
-                  xml.tag! 'wsse:Username', @options[:login]
-                  xml.tag! 'wsse:Password', @options[:password], 'Type' => 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText'
-                end
-              end
+      def sign_info(body)
+        canonicalized = canonicalization(body)
+        digest_value = OpenSSL::Digest::SHA256.digest(canonicalized)
+
+        xml = Builder::XmlMarkup.new indent: 2
+
+        xml.tag! 'ds:SignedInfo', { 'xmlns:ds' => NS_DS } do
+          xml.tag! 'ds:CanonicalizationMethod', { 'Algorithm' => C14N_ALGORITHM }
+          xml.tag! 'ds:SignatureMethod', { 'Algorithm' => RSA_SHA256_ALGORITHM }
+          xml.tag! 'ds:Reference', { 'URI' => '#Body' } do
+            xml.tag! 'ds:Transforms' do
+              xml.tag! 'ds:Transform', { 'Algorithm' => C14N_ALGORITHM }
             end
-            xml.tag! 's:Body', {'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance', 'xmlns:xsd' => 'http://www.w3.org/2001/XMLSchema'} do
-              xml.tag! 'requestMessage', {'xmlns' => "urn:schemas-cybersource-com:transaction-data-#{XSD_VERSION}"} do
-                add_merchant_data(xml, options)
-                xml << body
+            xml.tag! 'ds:DigestMethod', { 'Algorithm' => SHA256_ALGORITHM }
+            xml.tag! 'ds:DigestValue', Base64.encode64(digest_value).strip
+          end
+        end
+
+        canonicalization(xml.target!)
+      end
+
+      def signature_element(xml, body)
+        signed_info = sign_info(body)
+        rsa_private_key = OpenSSL::PKey::RSA.new(@options[:private_key])
+        signature = rsa_private_key.sign(OpenSSL::Digest.new('SHA256'), signed_info)
+
+        xml.tag! 'ds:Signature', { 'xmlns:ds' => NS_DS } do
+          xml << signed_info
+          xml.tag! 'ds:SignatureValue', { 'xmlns:ds' => NS_DS } do
+            xml.text! Base64.encode64(signature).strip
+          end
+          xml.tag! 'ds:KeyInfo', { 'xmlns:ds' => NS_DS } do
+            xml.tag! 'wsse:SecurityTokenReference', { 'xmlns:wsse' => NS_WSSE } do
+              xml.tag! 'wsse:Reference', { 'URI' => '#X509Token', 'xmlns:wsse' => NS_WSSE }
+            end
+          end
+        end
+      end
+
+      def security_token_reference(xml)
+        xml.tag! 'wsse:BinarySecurityToken', { 'ValueType' => BINARY_SECURITY_TOKEN_PROFILE, 'EncodingType' => BINARY_SECURITY_TOKEN_TYPE, 'xmlns:wsu' => BINARY_SECURITY_TOKEN_WSU, 'wsu:Id' => BINARY_SECURITY_TOKEN_ID } do
+          xml.text! @options[:public_key]
+        end
+      end
+
+      def set_headers(xml, body)
+        xml.tag! 's:Header' do
+          xml.tag! 'wsse:Security', { 'xmlns:wsse' => NS_WSSE } do
+            if @options[:public_key]
+              security_token_reference(xml)
+              signature_element(xml, body)
+            else
+              xml.tag! 'wsse:UsernameToken' do
+                xml.tag! 'wsse:Username', @options[:login]
+                xml.tag! 'wsse:Password', @options[:password], 'Type' => USERNAME_TOKEN_PROFILE
               end
             end
           end
+        end
+      end
+
+      def build_body(request, options, xsd_version)
+        xml = Builder::XmlMarkup.new indent: 2
+
+        arguments =
+          if @options[:public_key]
+            { 'xmlns:s' => ENVELOPE, 'xmlns:wsu' => BINARY_SECURITY_TOKEN_WSU, 'wsu:Id' => 'Body' }
+          else
+            { 'xmlns:xsi' => 'http://www.w3.org/2001/XMLSchema-instance', 'xmlns:xsd' => 'http://www.w3.org/2001/XMLSchema' }
+          end
+
+        xml.tag! 's:Body', arguments do
+          xml.tag! 'requestMessage', { 'xmlns' => "urn:schemas-cybersource-com:transaction-data-#{xsd_version}" } do
+            add_merchant_data(xml, options)
+            xml << request
+          end
+        end
+
+        xml.target!
+      end
+
+      def canonicalization(xml)
+        doc = Nokogiri::XML(xml)
+        doc.canonicalize(Nokogiri::XML::XML_C14N_EXCLUSIVE_1_0)
+      end
+
+      # Where we actually build the full SOAP request using builder
+      def build_request(request, options)
+        body = build_body(request, options, XSD_VERSION)
+        xml = Builder::XmlMarkup.new indent: 2
+
+        xml.instruct!
+        xml.tag! 's:Envelope', { 'xmlns:s' => ENVELOPE, 'xmlns' => "urn:schemas-cybersource-com:transaction-data-#{XSD_VERSION}" } do
+          set_headers(xml, body)
+          xml << body
+        end
+
         xml.target!
       end
 
