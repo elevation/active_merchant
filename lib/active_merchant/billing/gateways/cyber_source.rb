@@ -682,12 +682,15 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_creditcard(xml, creditcard)
+        # AlbumExposure: a subscription update may carry only a new
+        # expiration; CyberSource rejects empty accountNumber/cardType
+        # elements, so blanks are left out rather than sent empty.
         xml.tag! 'card' do
-          xml.tag! 'accountNumber', creditcard.number
-          xml.tag! 'expirationMonth', format(creditcard.month, :two_digits)
-          xml.tag! 'expirationYear', format(creditcard.year, :four_digits)
+          xml.tag! 'accountNumber', creditcard.number unless creditcard.number.blank?
+          xml.tag! 'expirationMonth', format(creditcard.month, :two_digits) unless creditcard.month.blank?
+          xml.tag! 'expirationYear', format(creditcard.year, :four_digits) unless creditcard.year.blank?
           xml.tag!('cvNumber', creditcard.verification_value) unless @options[:ignore_cvv].to_s == 'true' || creditcard.verification_value.blank?
-          xml.tag! 'cardType', @@credit_card_codes[card_brand(creditcard).to_sym]
+          xml.tag! 'cardType', @@credit_card_codes[card_brand(creditcard).to_sym] unless card_brand(creditcard).blank?
         end
       end
 
@@ -937,7 +940,12 @@ module ActiveMerchant #:nodoc:
 
         xml.tag! 'recurringSubscriptionInfo' do
           if reference
-            subscription_id = reference.split(';')[6]
+            # AlbumExposure: the subscription id is the create request's
+            # requestID, the second item of every reference this app has
+            # stored since 2013; references written before activemerchant
+            # 1.8 have only three items, so upstream's seventh is blank
+            # for them (and equals the second in the rest).
+            subscription_id = reference.split(';')[1]
             xml.tag! 'subscriptionID',  subscription_id
           end
 
